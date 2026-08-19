@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>claude-skill-saas-plan</title>
+  <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&f[]=cabinet-grotesk@500,700&display=swap" rel="stylesheet">
+  <style>
+    :root,[data-theme="light"]{
+      --text-xs:clamp(.75rem,.7rem + .25vw,.875rem);
+      --text-sm:clamp(.875rem,.8rem + .35vw,1rem);
+      --text-base:clamp(1rem,.95rem + .25vw,1.125rem);
+      --text-lg:clamp(1.125rem,1rem + .75vw,1.5rem);
+      --text-xl:clamp(1.5rem,1.2rem + 1.25vw,2.25rem);
+      --space-1:.25rem;--space-2:.5rem;--space-3:.75rem;--space-4:1rem;--space-5:1.25rem;--space-6:1.5rem;--space-8:2rem;--space-10:2.5rem;--space-12:3rem;--space-16:4rem;--space-20:5rem;
+      --color-bg:#f7f6f2;--color-surface:#f9f8f5;--color-surface-2:#fbfbf9;--color-surface-offset:#f3f0ec;--color-border:#d4d1ca;--color-divider:#dcd9d5;
+      --color-text:#28251d;--color-text-muted:#7a7974;--color-text-faint:#bab9b4;--color-primary:#01696f;--color-primary-hover:#0c4e54;--color-primary-highlight:#cedcd8;--color-success:#437a22;--color-warning:#964219;--color-error:#a12c7b;
+      --radius-sm:.375rem;--radius-md:.5rem;--radius-lg:.75rem;--radius-xl:1rem;--radius-full:9999px;
+      --shadow-sm:0 1px 2px rgba(0,0,0,.06);--shadow-md:0 4px 12px rgba(0,0,0,.08);--shadow-lg:0 12px 32px rgba(0,0,0,.12);
+      --font-body:'Satoshi', 'Inter', sans-serif;--font-display:'Cabinet Grotesk', 'Inter', sans-serif;
+    }
+    [data-theme="dark"]{
+      --color-bg:#171614;--color-surface:#1c1b19;--color-surface-2:#201f1d;--color-surface-offset:#1d1c1a;--color-border:#393836;--color-divider:#262523;
+      --color-text:#cdccca;--color-text-muted:#979694;--color-text-faint:#5a5957;--color-primary:#4f98a3;--color-primary-hover:#227f8b;--color-primary-highlight:#313b3b;--color-success:#6daa45;--color-warning:#bb653b;--color-error:#d163a7;
+      --shadow-sm:0 1px 2px rgba(0,0,0,.2);--shadow-md:0 4px 12px rgba(0,0,0,.3);--shadow-lg:0 12px 32px rgba(0,0,0,.4);
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{-webkit-font-smoothing:antialiased;scroll-behavior:smooth}
+    body{font-family:var(--font-body);font-size:var(--text-base);line-height:1.6;background:var(--color-bg);color:var(--color-text);min-height:100dvh}
+    a{color:inherit} button{font:inherit}
+    .shell{display:grid;grid-template-columns:280px 1fr;min-height:100dvh}
+    .sidebar{position:sticky;top:0;height:100dvh;padding:var(--space-8) var(--space-6);background:var(--color-surface);border-right:1px solid var(--color-border);overflow:auto}
+    .brand{display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-8)}
+    .brand svg{width:36px;height:36px;color:var(--color-primary)}
+    .brand-name{font-family:var(--font-display);font-size:var(--text-lg);line-height:1.1}
+    .brand-sub{font-size:var(--text-xs);color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.08em}
+    .nav{display:grid;gap:var(--space-2)}
+    .nav a{padding:.7rem .85rem;border-radius:var(--radius-md);text-decoration:none;color:var(--color-text-muted)}
+    .nav a:hover,.nav a.active{background:var(--color-primary-highlight);color:var(--color-text)}
+    .main{padding:var(--space-8) var(--space-8) var(--space-16)}
+    .topbar{display:flex;justify-content:space-between;gap:var(--space-4);align-items:flex-start;margin-bottom:var(--space-8)}
+    h1{font-family:var(--font-display);font-size:var(--text-xl);line-height:1.05;max-width:14ch}
+    .lede{max-width:72ch;color:var(--color-text-muted);margin-top:var(--space-3)}
+    .theme-toggle{border:1px solid var(--color-border);background:var(--color-surface);padding:.7rem;border-radius:var(--radius-full);display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;color:var(--color-text)}
+    .grid{display:grid;gap:var(--space-6)}
+    .hero-cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-xl);padding:var(--space-6);box-shadow:var(--shadow-sm)}
+    .metric{font-size:var(--text-xs);text-transform:uppercase;letter-spacing:.08em;color:var(--color-text-muted);margin-bottom:var(--space-2)}
+    .metric-value{font-family:var(--font-display);font-size:var(--text-lg)}
+    h2{font-size:var(--text-lg);margin-bottom:var(--space-4);font-family:var(--font-display)}
+    h3{font-size:var(--text-base);margin-bottom:var(--space-2)}
+    p,li{max-width:78ch}
+    ul{padding-left:1.2rem}
+    .section{margin-top:var(--space-10)}
+    .section-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:var(--space-6)}
+    .stack{display:grid;gap:var(--space-4)}
+    .pill{display:inline-flex;align-items:center;padding:.35rem .7rem;border-radius:var(--radius-full);background:var(--color-primary-highlight);color:var(--color-primary);font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+    .table-wrap{overflow:auto}
+    table{width:100%;border-collapse:collapse;font-size:var(--text-sm)}
+    th,td{padding:.85rem .75rem;border-bottom:1px solid var(--color-divider);vertical-align:top;text-align:left}
+    th{color:var(--color-text-muted);font-weight:700;font-size:var(--text-xs);text-transform:uppercase;letter-spacing:.06em}
+    code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:var(--color-surface-offset);padding:.15rem .35rem;border-radius:var(--radius-sm)}
+    .flow{border-left:2px solid var(--color-border);padding-left:var(--space-5)}
+    .footer-note{margin-top:var(--space-10);color:var(--color-text-muted);font-size:var(--text-sm)}
+    @media (max-width: 980px){.shell{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.hero-cards,.section-grid{grid-template-columns:1fr}h1{max-width:none}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <svg viewBox="0 0 48 48" fill="none" aria-label="SkillStack logo">
+          <rect x="6" y="6" width="36" height="36" rx="10" stroke="currentColor" stroke-width="3"></rect>
+          <path d="M16 18h16M16 24h10M16 30h16" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path>
+        </svg>
+        <div>
+          <div class="brand-name">SkillStack</div>
+          <div class="brand-sub">SaaS planning blueprint</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <a class="active" href="#overview">Overview</a>
+        <a href="#features">Core features</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#users">User management</a>
+        <a href="#flows">User flows</a>
+        <a href="#deploy">Deployment</a>
+        <a href="#pricing">Monetization</a>
+        <a href="#roadmap">Roadmap</a>
+      </nav>
+    </aside>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <div class="pill">Technical plan</div>
+          <h1>Claude skill to SaaS application architecture</h1>
+          <p class="lede">This plan assumes the provided Claude skill is the core product engine. Because the skill content is shown only as <code>{{SKILL_DESCRIPTION}}</code>, the architecture below is designed as a reusable SaaS blueprint with clearly marked places to map the actual skill-specific inputs, outputs, and workflows.</p>
+        </div>
+        <button class="theme-toggle" data-theme-toggle aria-label="Switch theme">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+
+      <section id="overview" class="grid hero-cards">
+        <article class="card"><div class="metric">Core model</div><div class="metric-value">AI workflow app</div><p>Wrap the Claude skill in a multi-tenant web product with authentication, billing, saved runs, and team collaboration.</p></article>
+        <article class="card"><div class="metric">Primary value</div><div class="metric-value">Repeatable output</div><p>Turn one-off prompting into a structured product where users submit consistent inputs and receive persistent, reusable outputs.</p></article>
+        <article class="card"><div class="metric">Best fit</div><div class="metric-value">B2B SaaS</div><p>Strongest position is a subscription tool for professionals who need speed, standardization, and stored history around the skill.</p></article>
+      </section>
+
+      <section id="features" class="section section-grid">
+        <article class="card stack">
+          <h2>Application Overview</h2>
+          <p><strong>What it does:</strong> The app exposes the Claude skill through a guided workspace instead of raw prompting. Users fill in structured inputs, run the AI workflow, review results, and save or share outputs.</p>
+          <p><strong>Value proposition:</strong> It reduces prompt friction, improves consistency, creates an audit trail, and makes the skill usable by non-technical customers or distributed teams.</p>
+          <p><strong>Product framing:</strong> Think of it as a workflow application, not just a chat wrapper. The skill becomes one service inside a broader system for projects, histories, templates, permissions, exports, and analytics.</p>
+        </article>
+        <article class="card stack">
+          <h2>Core Features</h2>
+          <ul>
+            <li>Structured input form mapped to the skill's required parameters.</li>
+            <li>Prompt orchestration layer that converts form data into the exact Claude skill invocation.</li>
+            <li>Run history with status, timestamps, versions, cost, and output snapshots.</li>
+            <li>Saved templates or presets for repeated use cases.</li>
+            <li>Project workspace for grouping related runs, files, and notes.</li>
+            <li>Editable output review screen with copy, export, and regenerate actions.</li>
+            <li>Usage analytics, quota tracking, and billing controls.</li>
+            <li>Admin console for monitoring model usage, failures, abuse, and customer accounts.</li>
+          </ul>
+        </article>
+      </section>
+
+      <section id="architecture" class="section grid">
+        <article class="card stack">
+          <h2>Technical Architecture</h2>
+          <h3>Frontend</h3>
+          <ul>
+            <li><strong>Recommended stack:</strong> Next.js with TypeScript, React Server Components where useful, Tailwind or CSS variables for design system consistency, and TanStack Query for client data fetching.</li>
+            <li><strong>Primary UI surfaces:</strong> marketing landing page, authenticated dashboard, project list, run composer, output viewer, billing page, team settings, and admin panel.</li>
+            <li><strong>Key components:</strong> dynamic form builder, chat or activity timeline, version diff viewer, prompt preview panel, file upload module, run status badges, and export controls.</li>
+            <li><strong>State model:</strong> optimistic UI for run creation, polling or websockets for long-running jobs, URL-driven filters, and autosave draft state for unfinished input forms.</li>
+          </ul>
+          <h3>Backend</h3>
+          <ul>
+            <li><strong>Recommended stack:</strong> Node.js with NestJS or Next.js API routes for MVP, then split into dedicated services if usage grows.</li>
+            <li><strong>Core services:</strong> auth service, billing service, AI orchestration service, file service, notification service, and analytics service.</li>
+            <li><strong>Suggested API endpoints:</strong> <code>POST /auth/login</code>, <code>POST /projects</code>, <code>GET /projects/:id</code>, <code>POST /runs</code>, <code>GET /runs/:id</code>, <code>POST /runs/:id/retry</code>, <code>POST /templates</code>, <code>GET /usage</code>, <code>POST /webhooks/billing</code>, <code>GET /admin/tenants</code>.</li>
+            <li><strong>Server logic:</strong> validate inputs, normalize payloads, compose the system prompt and skill wrapper, send requests to Claude, store responses, enforce quotas, redact sensitive logs, and stream progress back to the UI.</li>
+          </ul>
+          <h3>Database</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Table</th><th>Purpose</th><th>Key fields</th></tr></thead>
+              <tbody>
+                <tr><td>users</td><td>Identity and profile</td><td>id, email, name, password_hash, status, last_login_at</td></tr>
+                <tr><td>organizations</td><td>Multi-tenant account</td><td>id, name, owner_user_id, plan, billing_customer_id</td></tr>
+                <tr><td>organization_members</td><td>Team membership</td><td>org_id, user_id, role, invited_by, joined_at</td></tr>
+                <tr><td>projects</td><td>User workspaces</td><td>id, org_id, name, description, created_by</td></tr>
+                <tr><td>templates</td><td>Reusable skill presets</td><td>id, org_id, name, input_schema_version, default_values</td></tr>
+                <tr><td>runs</td><td>Execution records</td><td>id, project_id, user_id, status, model, token_count, cost_estimate, started_at, completed_at</td></tr>
+                <tr><td>run_inputs</td><td>Structured user inputs</td><td>run_id, input_json, attachment_refs, redaction_flags</td></tr>
+                <tr><td>run_outputs</td><td>Model responses</td><td>run_id, output_json, rendered_text, artifacts, quality_score</td></tr>
+                <tr><td>audit_logs</td><td>Security and admin events</td><td>id, actor_id, action, target_type, target_id, metadata, created_at</td></tr>
+                <tr><td>usage_events</td><td>Metering</td><td>id, org_id, run_id, event_type, tokens_in, tokens_out, cost</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p><strong>Storage choices:</strong> PostgreSQL for core relational data, Redis for queues and rate limiting, and object storage such as S3 for uploads and generated artifacts.</p>
+          <h3>Claude Integration</h3>
+          <ul>
+            <li>Create a dedicated orchestration layer that owns the prompt template, skill instructions, model selection, retries, timeout rules, and response parsing.</li>
+            <li>Represent the Claude skill as a versioned configuration object: <code>skill_id</code>, <code>system_prompt</code>, <code>input_schema</code>, <code>output_schema</code>, <code>safety_rules</code>, and <code>post_processors</code>.</li>
+            <li>Use schema validation before and after model execution so the UI works with structured data instead of raw free-form text wherever possible.</li>
+            <li>Log prompt and output metadata separately from sensitive customer content so observability stays useful without overexposing private data.</li>
+          </ul>
+        </article>
+      </section>
+
+      <section id="users" class="section section-grid">
+        <article class="card stack">
+          <h2>User Management</h2>
+          <ul>
+            <li><strong>Authentication:</strong> email/password, magic link, Google OAuth for convenience, and optional SSO for enterprise plans.</li>
+            <li><strong>Authorization:</strong> role-based access with at least owner, admin, editor, and viewer roles at the organization level.</li>
+            <li><strong>Account features:</strong> profile settings, API key management if external access is offered, team invitations, seat management, and usage dashboards.</li>
+            <li><strong>Security controls:</strong> MFA, session expiration, suspicious login detection, IP/device logs, and admin impersonation only with auditable consent rules.</li>
+          </ul>
+        </article>
+        <article class="card stack">
+          <h2>Security & Privacy</h2>
+          <ul>
+            <li>Encrypt data in transit with TLS and at rest for databases and object storage.</li>
+            <li>Separate tenant data using organization scoping on every query and service boundary.</li>
+            <li>Support configurable retention policies for run history and uploaded files.</li>
+            <li>Mask secrets and personally identifiable information in logs, traces, and error reporting.</li>
+            <li>Add abuse prevention: rate limits, CAPTCHA on signup, prompt injection checks, file scanning, and moderation rules where needed.</li>
+            <li>If the skill handles regulated data, plan for SOC 2 controls early and isolate any high-risk workflow behind stricter permissioning.</li>
+          </ul>
+        </article>
+      </section>
+
+      <section id="flows" class="section section-grid">
+        <article class="card stack">
+          <h2>Key User Flows</h2>
+          <div class="flow stack">
+            <h3>Flow 1: First-time onboarding</h3>
+            <p>User signs up, creates an organization, selects a template or starter mode, completes a short setup wizard, and lands in a guided first run experience.</p>
+          </div>
+          <div class="flow stack">
+            <h3>Flow 2: Create and save a run</h3>
+            <p>User opens a project, enters structured inputs, uploads optional files, reviews a prompt summary, submits the run, watches progress, then saves or exports the output.</p>
+          </div>
+          <div class="flow stack">
+            <h3>Flow 3: Team review and reuse</h3>
+            <p>A teammate opens a previous run, comments or edits the result, duplicates the configuration into a reusable template, and shares it across the workspace.</p>
+          </div>
+        </article>
+        <article class="card stack">
+          <h2>Operational Flows</h2>
+          <ul>
+            <li>Retry failed runs automatically with idempotency keys and capped backoff.</li>
+            <li>Queue long-running jobs so UI requests return quickly and clients subscribe for status updates.</li>
+            <li>Fire billing events after completed runs to maintain accurate usage-based metering.</li>
+            <li>Route high-severity failures to an internal alerting channel with full request correlation IDs.</li>
+          </ul>
+        </article>
+      </section>
+
+      <section id="deploy" class="section section-grid">
+        <article class="card stack">
+          <h2>Deployment & Scaling</h2>
+          <ul>
+            <li><strong>Hosting:</strong> Vercel for the frontend, containerized backend on AWS ECS/Fargate or Railway for MVP, and managed PostgreSQL such as Neon, RDS, or Supabase.</li>
+            <li><strong>Queues:</strong> Redis-backed job queues with BullMQ or a managed queue service for prompt execution and file processing.</li>
+            <li><strong>Scalability path:</strong> start as a modular monolith; split AI execution, billing, and notification workloads into separate services once throughput or reliability needs justify it.</li>
+            <li><strong>Monitoring:</strong> OpenTelemetry traces, structured logs, error tracking via Sentry, infrastructure dashboards, token-cost dashboards, and SLA alerts on latency and failure rate.</li>
+            <li><strong>Reliability:</strong> health checks, circuit breakers around model APIs, dead-letter queues, nightly backups, and restore drills.</li>
+          </ul>
+        </article>
+        <article class="card stack">
+          <h2>API Integrations</h2>
+          <ul>
+            <li>Claude API for the core model execution layer.</li>
+            <li>Stripe for subscriptions, usage billing, invoices, and customer portal.</li>
+            <li>Email provider such as Resend or Postmark for auth links, invites, and notifications.</li>
+            <li>Optional storage and OCR integrations if the skill accepts documents or images.</li>
+            <li>Optional analytics tools such as PostHog for product analytics and feature adoption.</li>
+          </ul>
+        </article>
+      </section>
+
+      <section id="pricing" class="section section-grid">
+        <article class="card stack">
+          <h2>Monetization Considerations</h2>
+          <ul>
+            <li><strong>Free tier:</strong> limited monthly runs, watermark or basic exports, community support.</li>
+            <li><strong>Pro tier:</strong> higher run volume, saved templates, export formats, advanced history, and priority performance.</li>
+            <li><strong>Team tier:</strong> shared workspaces, RBAC, collaboration, billing admin, and higher limits.</li>
+            <li><strong>Enterprise tier:</strong> SSO, audit logs, custom retention, private deployment options, and negotiated usage pricing.</li>
+            <li><strong>Metering model:</strong> base subscription plus usage-based overages is often best when AI cost scales with tokens or files.</li>
+          </ul>
+        </article>
+        <article class="card stack">
+          <h2>Pricing Logic</h2>
+          <p>Price around the business value of the skill, not only token cost. If outputs save expert labor or generate client-facing deliverables, value-based pricing can support significantly higher margins than pure cost-plus pricing.</p>
+          <p>Include internal cost controls such as per-plan model limits, maximum context size, attachment limits, and cached result reuse for repeated prompts.</p>
+        </article>
+      </section>
+
+      <section id="roadmap" class="section section-grid">
+        <article class="card stack">
+          <h2>Development Roadmap</h2>
+          <div class="stack">
+            <h3>MVP</h3>
+            <ul>
+              <li>User signup/login, one workspace per account, one core skill flow.</li>
+              <li>Structured input form, Claude execution, output display, run history, Stripe billing.</li>
+              <li>Basic analytics, error logging, quota enforcement, and admin troubleshooting tools.</li>
+            </ul>
+          </div>
+          <div class="stack">
+            <h3>Phase 2</h3>
+            <ul>
+              <li>Templates, projects, collaboration, comments, exports, and improved observability.</li>
+              <li>Background processing, streaming responses, richer attachments, and audit trails.</li>
+            </ul>
+          </div>
+          <div class="stack">
+            <h3>Phase 3</h3>
+            <ul>
+              <li>Advanced team roles, enterprise security, SSO, API access, webhook triggers, and deeper analytics.</li>
+              <li>Multi-skill support if you want the platform to host more than one Claude-powered workflow.</li>
+            </ul>
+          </div>
+        </article>
+        <article class="card stack">
+          <h2>Implementation Notes</h2>
+          <ul>
+            <li>The missing input for a truly skill-specific build is the actual Claude skill text. Once available, map every required field into an explicit input schema and every expected result into a renderable output schema.</li>
+            <li>If you share the full skill description, this blueprint can be tightened into a domain-specific PRD, API contract, screen map, and database schema tailored to that exact workflow.</li>
+          </ul>
+        </article>
+      </section>
+
+      <p class="footer-note">Built as a single-file planning site so a product, design, and engineering team can review the system architecture together.</p>
+    </main>
+  </div>
+  <script>
+    (function(){
+      const btn=document.querySelector('[data-theme-toggle]');
+      const root=document.documentElement;
+      let theme=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+      root.setAttribute('data-theme',theme);
+      const render=()=>{btn.innerHTML=theme==='dark'
+        ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>'
+        : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+      };
+      render();
+      btn.addEventListener('click',()=>{theme=theme==='dark'?'light':'dark';root.setAttribute('data-theme',theme);render();});
+    })();
+  </script>
+</body>
+</html>

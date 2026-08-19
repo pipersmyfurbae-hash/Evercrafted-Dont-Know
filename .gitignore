@@ -1,0 +1,12 @@
+._*
+.DS_Store
+
+node_modules/
+dist/
+npm-debug.log*
+yarn-error.log*
+
+*.log
+
+firebase-applet-config.json
+.env
