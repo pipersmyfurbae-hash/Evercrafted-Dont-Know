@@ -1,0 +1,36 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+
+@theme {
+  --color-background: #faf9f7;
+  --color-foreground: #1c1917;
+  --color-card: #ffffff;
+  --color-card-foreground: #1c1917;
+  --color-primary: #3f3a34;
+  --color-primary-foreground: #faf9f7;
+  --color-muted-foreground: #78716c;
+  --color-destructive: #b91c1c;
+  --color-destructive-foreground: #ffffff;
+  --font-sans: "Geist Variable", system-ui, sans-serif;
+  --font-serif: "Iowan Old Style", "Palatino Linotype", serif;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* Editorial type scale used across Studio pages (Memory Weaver, Sourcing, etc.) */
+.display-text {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.editorial-title {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 400;
+}
