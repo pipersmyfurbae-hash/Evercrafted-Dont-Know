@@ -11,6 +11,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { getFirestore } from 'firebase-admin/firestore';
 import { isDoorId, isMoodId, isSeasonId, rankMoodoorMatches, toPublicMatch } from './services/moodoor/core.ts';
 import { getPublicMoodoorCatalog, setMoodoorPublicationServer } from './services/firebase/moodoorProjection.ts';
+import { createRateLimiter } from './services/rateLimiter.ts';
 
 // Initialize Firebase Admin
 admin.initializeApp({
@@ -205,7 +206,8 @@ async function startServer() {
   // via getPublicMoodoorCatalog — never the canonical marketplace_listings
   // collection — and ranks server-side, so the client can no longer see
   // unprojected marketplace fields.
-  app.post('/api/v1/moodoor/matches', async (req, res) => {
+  const moodoorMatchesRateLimit = createRateLimiter({ windowMs: 60_000, max: 30 });
+  app.post('/api/v1/moodoor/matches', moodoorMatchesRateLimit, async (req, res) => {
     try {
       const { mood, season, door } = req.body ?? {};
       if (!isMoodId(mood) || !isSeasonId(season) || !isDoorId(door)) {
@@ -243,7 +245,7 @@ async function startServer() {
     } catch (error) {
       console.error('Moodoor publication error:', error);
       const message = error instanceof Error ? error.message : 'Failed to update Moodoor publication.';
-      const status = message.includes('do not own')
+      const status = message.includes('do not own') || message.includes('does not include')
         ? 403
         : message.includes('not found') || message.includes('not eligible')
           ? 400

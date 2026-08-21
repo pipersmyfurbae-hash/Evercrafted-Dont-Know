@@ -1,6 +1,7 @@
 import type { Firestore } from 'firebase-admin/firestore';
 import { FieldValue } from 'firebase-admin/firestore';
 import * as core from '../moodoor/core';
+import { checkFeatureAccess, type Tier } from '../tierService';
 
 /**
  * Server-side (firebase-admin) half of the Phase 1-3 migration described in
@@ -142,6 +143,16 @@ export async function setMoodoorPublicationServer(
 
     if (raw.creatorId !== actor.uid) {
       throw new Error('You do not own this listing.');
+    }
+
+    // Mirrors the client-side gate on /app/moodoor-studio (TierGuard
+    // feature="hasDesignStudio") — enforced here too since the client check
+    // alone is not a security boundary.
+    const userSnap = await tx.get(db.collection('users').doc(actor.uid));
+    const userData = userSnap.data() as { role?: string; tier?: string } | undefined;
+    const isAdmin = userData?.role === 'admin';
+    if (!isAdmin && !checkFeatureAccess((userData?.tier as Tier) || 'free', 'hasDesignStudio')) {
+      throw new Error('Your plan does not include Moodoor Studio publishing.');
     }
 
     if (action === 'publish') {

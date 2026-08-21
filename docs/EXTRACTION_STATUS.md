@@ -216,9 +216,75 @@ finder and the maker Studio's publish action no longer touch it directly from th
   straight to the new code path rather than behind a flag, since there's no live traffic on this
   branch yet. Add them before deploying to an environment with real users, so a bad rollout can be
   flipped off without a revert.
-- Auth on the publication route checks the token is valid **and** that `creatorId` on the
-  canonical listing matches the caller's uid (403 otherwise) — but it does not yet check the
-  caller's tier/role. Tier gating (mirroring what `TierGuard`/`checkFeatureAccess` already do
-  client-side for `hasDesignStudio`/`hasCreatorUpload`) still needs to move into
-  `setMoodoorPublicationServer()` — right now any signed-in owner of a listing can publish it to
-  Moodoor regardless of subscription tier.
+- ~~Auth on the publication route checks the token is valid **and** that `creatorId` matches, but
+  not tier/role~~ — closed in Phase 3 below.
+
+---
+
+# Phase 3 — Security hardening
+
+Closes the security gaps Phase 2 left open: Firestore rules, tier gating on the publish route,
+and rate limiting on the public matcher. Follows Part V ("Security Rules and Operational
+Controls") of the migration plan doc.
+
+## What changed
+
+1. **`firestore.rules`** (new) — this repo had no rules file at all before now, so client SDK
+   access to Firestore was governed only by whatever the live project's console rules happened to
+   be. Added an explicit, deny-by-default rules file:
+   - `marketplace_listings` — owner or admin only, matching `getCreatorMoodoorListings()`'s
+     `creatorId` query.
+   - `moodoor_public_listings` — public read, `write: if false` (only the Admin SDK, which
+     bypasses rules, may write it — via `rebuildMoodoorProjection()`).
+   - `moodoor_publication_events` and `schema_migrations` — no client access at all.
+   - `users` — owners can read their own doc and create it (matching `AuthContext.tsx`'s
+     first-sign-in write) but **cannot** set their own `role` or `tier` on create, and cannot
+     change either on update — closes the hole where a signed-in client could otherwise grant
+     itself `role: 'admin'` or a paid `tier` by writing its own user document.
+   - `firebase.json` (new) points `firestore:` at this rules file so `firebase deploy
+     --only firestore:rules` picks it up once run against a real project — that deploy step
+     itself still needs to happen against your actual Firebase project; it's not something this
+     repo can do on its own.
+2. **`services/firebase/moodoorProjection.ts`** — `setMoodoorPublicationServer()` now also reads
+   the caller's `users/{uid}` doc inside the same transaction and requires either `role === 'admin'`
+   or `checkFeatureAccess(tier, 'hasDesignStudio')` (from the existing `services/tierService.ts`)
+   before allowing a publish/unpublish — mirroring the client-side `TierGuard
+   feature="hasDesignStudio"` gate already on the `/app/moodoor-studio` route, so the tier check
+   isn't only cosmetic on the client.
+   **Note:** `contexts/AuthContext.tsx`'s `UserData.tier` type (`'free' | 'pro' | 'studio' |
+   'enterprise'`) doesn't actually match `tierService.ts`'s `Tier` union (`'free' | 'bloom' |
+   'craft' | 'studio' | 'pro'`) — this mismatch predates this change and wasn't introduced by it,
+   but it means a user document written with `tier: 'enterprise'` or `'pro'` won't resolve to
+   any tier `checkFeatureAccess` recognizes as full access today except `'pro'` and `'studio'`,
+   which happen to overlap. Worth reconciling before relying on this in production — flagged here
+   rather than silently patched over, since it touches how every tier gate in the app resolves,
+   not just Moodoor's.
+3. **`services/rateLimiter.ts`** (new) — a minimal in-process fixed-window limiter (30
+   requests/minute per IP by default), applied to `POST /api/v1/moodoor/matches` in `server.ts`
+   (the plan's "rate-limit" requirement for the public matcher). Explicitly documented as
+   per-process only — it does not share state across multiple server instances behind a load
+   balancer; swap for a shared store (Redis, Firestore) before scaling beyond one instance.
+4. **`scripts/test-rate-limiter.ts`** (new, `npm run test:rate-limiter`) — verifies the limiter
+   allows traffic under the cap, returns 429 once exceeded, and tracks each IP independently.
+
+## Verified
+
+- `npx tsc --noEmit` — still clean.
+- `npm run test:moodoor-matching` (34/34), `npm run test:moodoor-projection` (2/2),
+  `npm run test:rate-limiter` (3/3) — all pass.
+- `npx vite build` — still succeeds.
+
+## Still open after Phase 3
+
+- **The rules file has not been deployed.** Writing `firestore.rules` doesn't protect anything
+  until `firebase deploy --only firestore:rules` runs against the real project — that requires
+  Firebase CLI auth this sandboxed session doesn't have. Do this before treating any of the above
+  as an actual security boundary.
+- **The `UserData.tier` / `tierService.Tier` mismatch** noted above should be reconciled — right
+  now it's possible for a real user's tier value to silently fail to match any known tier and be
+  treated as `'free'` (safe-but-confusing) rather than raising a clear error.
+- **No composite indexes, no backfill script, no feature flags** — still open from Phase 2 (see
+  above); none of those are security issues specifically, so they weren't pulled into this pass.
+- **Rate limiting is per-process** — fine for a single instance, not for a horizontally scaled
+  deployment. No other route (e.g. `/blueprint/create`, which calls the Gemini API) has any rate
+  limiting yet either; this pass only added it to the newly-added public Moodoor route.
