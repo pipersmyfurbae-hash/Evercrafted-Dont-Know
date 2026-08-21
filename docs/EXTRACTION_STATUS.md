@@ -129,7 +129,7 @@ The new `App.tsx` wires `react-router-dom` routes for every page that was extrac
 - `npx vite build` — production build succeeds (single ~390 kB gzip JS bundle; code-splitting is
   a reasonable follow-up, flagged by Vite's own chunk-size warning, not treated as a blocker here).
 
-## Still open
+## Still open (as of end of Phase 1)
 
 - Real Firebase project credentials (gap #3) needed to run the app or test suite against live
   data — set them in `.env` (see `.env.example`), never commit them.
@@ -138,3 +138,87 @@ The new `App.tsx` wires `react-router-dom` routes for every page that was extrac
   real product requirements for those two features.
 - Phase 2 of the implementation plan (the Firestore/API migration for Moodoor's public
   projection) is unstarted.
+
+---
+
+# Phase 2 — Moodoor server-side projection & API migration
+
+Implements the architecture from "Moodoor Matching Code Walkthrough and Platform Migration
+Plan.md" Parts II-III: canonical `marketplace_listings` stays the source of truth, but the public
+finder and the maker Studio's publish action no longer touch it directly from the browser.
+
+## What changed
+
+1. **`services/moodoor/core.ts`** (new) — the eligibility/scoring logic (`toMoodoorCandidate`,
+   `toMoodoorListing`, `rankMoodoorMatches`, the mood/season/door vocabularies, the `0.78`/`0.42`
+   thresholds) was extracted out of `services/moodoorMatching.ts` into an isomorphic module with
+   **no Firestore import**, so the exact same code now runs both client-side (legacy) and
+   server-side (new) — the migration plan's "shadow matching" phase has nothing left to diff
+   because there's only one implementation. Also adds `toPublicMatch()`, which strips internal
+   fields (`quality`, `isMoodoorPublished`, `publishedAt`, the numeric `score`) before a match
+   crosses the API boundary, and `isMoodId`/`isSeasonId`/`isDoorId` guards for validating
+   untrusted request bodies.
+2. **`services/moodoorMatching.ts`** — now a thin client adapter re-exporting `core.ts`.
+   `getMoodoorCatalog`/`getCreatorMoodoorListings`/`toMoodoorCandidate`/`toMoodoorListing`/
+   `rankMoodoorMatches` keep their exact prior signatures (existing tests are untouched).
+   `setMoodoorPublication()` no longer writes to Firestore directly — it now calls the new
+   `PATCH /api/v1/moodoor/studio/listings/:id/publication` route with the signed-in maker's
+   Firebase ID token.
+3. **`services/firebase/moodoorProjection.ts`** (new, firebase-admin/server-only) —
+   `rebuildMoodoorProjection()` builds the `moodoor_public_listings` read model from a canonical
+   listing (or deletes the projection if the listing is no longer eligible);
+   `getPublicMoodoorCatalog()` is the only Firestore read the public matcher performs;
+   `setMoodoorPublicationServer()` is the publish/unpublish transaction — validates eligibility,
+   flips `moodoorPublished`/`moodoorStatus` on the canonical record, rebuilds the projection, and
+   appends an audit event to `moodoor_publication_events`, all atomically.
+4. **`server.ts`** — two new routes:
+   - `POST /api/v1/moodoor/matches` — public. Validates `{mood, season, door}` against the core
+     module's enum guards, reads `moodoor_public_listings` (never `marketplace_listings`), ranks
+     server-side, and returns `{ matches, catalogSize, noMatch }` — no raw score, per the
+     migration plan's public response contract.
+   - `PATCH /api/v1/moodoor/studio/listings/:id/publication` — verifies the caller's Firebase ID
+     token (`admin.auth().verifyIdToken`), then runs the transaction above.
+5. **`services/moodoorMatchesApi.ts`** (new) — client helper `fetchMoodoorMatches()` wrapping the
+   new public route.
+6. **`pages/Moodoor.tsx`** — `MoodoorFinder` now calls `fetchMoodoorMatches()` instead of
+   `getMoodoorCatalog()` + client-side `rankMoodoorMatches()`; it no longer holds the full catalog
+   in browser state, only the ranked public matches and a public `catalogSize` count (used for the
+   "there are N approved wreaths" empty-state copy). `MoodoorStudio`'s publish/unpublish button is
+   unchanged in the UI but now goes through the server transaction via the updated
+   `setMoodoorPublication()`.
+7. **`scripts/test-moodoor-projection.ts`** (new, `npm run test:moodoor-projection`) — covers the
+   new API boundary: `toPublicMatch()` strips `quality`/`isMoodoorPublished`/`publishedAt`/`score`.
+
+## Verified
+
+- `npx tsc --noEmit` — still clean.
+- `npm run test:moodoor-matching` — all 34 tests still pass unchanged (proves the `core.ts`
+  extraction preserved the legacy client adapter's exact behavior).
+- `npm run test:moodoor-projection` — both new boundary tests pass.
+- `npx vite build` — still succeeds.
+
+## Still open after Phase 2
+
+- **Firestore security rules** haven't been written/deployed (this repo has no `firestore.rules`
+  file at all yet) — until they exist and are deployed, `marketplace_listings` and
+  `moodoor_public_listings` are only as protected as the Firebase project's current rules make
+  them. Writing and deploying those rules per Part V of the migration plan ("Security Rules and
+  Operational Controls") is the most important remaining step before this is production-safe.
+- **No composite Firestore indexes** created yet for `moodoor_public_listings` — fine at small
+  scale, but the migration plan calls for one on `(availability, publishedAt)` if public
+  filtering/sorting is added later.
+- **Backfill** — Phase 2 of the plan (batch-converting existing legacy `marketplace_listings`
+  documents and populating `moodoor_public_listings` for already-published designs) hasn't run.
+  `rebuildMoodoorProjection()` only fires on a fresh publish/unpublish action; existing published
+  designs won't have a projection document until someone toggles them or a backfill script is
+  written and run once against the real project.
+- **No feature flags** (`moodoorServerMatches`, `moodoorPublicProjection`) — this migration went
+  straight to the new code path rather than behind a flag, since there's no live traffic on this
+  branch yet. Add them before deploying to an environment with real users, so a bad rollout can be
+  flipped off without a revert.
+- Auth on the publication route checks the token is valid **and** that `creatorId` on the
+  canonical listing matches the caller's uid (403 otherwise) — but it does not yet check the
+  caller's tier/role. Tier gating (mirroring what `TierGuard`/`checkFeatureAccess` already do
+  client-side for `hasDesignStudio`/`hasCreatorUpload`) still needs to move into
+  `setMoodoorPublicationServer()` — right now any signed-in owner of a listing can publish it to
+  Moodoor regardless of subscription tier.

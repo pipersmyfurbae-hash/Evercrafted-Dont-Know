@@ -9,6 +9,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import admin from 'firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore } from 'firebase-admin/firestore';
+import { isDoorId, isMoodId, isSeasonId, rankMoodoorMatches, toPublicMatch } from './services/moodoor/core.ts';
+import { getPublicMoodoorCatalog, setMoodoorPublicationServer } from './services/firebase/moodoorProjection.ts';
 
 // Initialize Firebase Admin
 admin.initializeApp({
@@ -193,6 +195,60 @@ async function startServer() {
     } catch (error) {
       console.error('Motion generation error:', error);
       res.status(500).json({ error: 'Failed to initiate motion generation' });
+    }
+  });
+
+  // Moodoor Routes (Part III of the migration plan in
+  // "Moodoor Matching Code Walkthrough and Platform Migration Plan.md")
+  //
+  // The public finder now reads only the moodoor_public_listings projection
+  // via getPublicMoodoorCatalog — never the canonical marketplace_listings
+  // collection — and ranks server-side, so the client can no longer see
+  // unprojected marketplace fields.
+  app.post('/api/v1/moodoor/matches', async (req, res) => {
+    try {
+      const { mood, season, door } = req.body ?? {};
+      if (!isMoodId(mood) || !isSeasonId(season) || !isDoorId(door)) {
+        return res.status(400).json({ error: 'mood, season, and door must each be a valid Moodoor enum value.' });
+      }
+
+      const catalog = await getPublicMoodoorCatalog(db);
+      const matches = rankMoodoorMatches({ mood, season, door }, catalog).map(toPublicMatch);
+
+      res.json({ matches, catalogSize: catalog.length, noMatch: matches.length === 0 });
+    } catch (error) {
+      console.error('Moodoor match error:', error);
+      res.status(500).json({ error: 'Failed to compute Moodoor matches' });
+    }
+  });
+
+  // Maker Studio publication toggle — verifies the caller's Firebase ID
+  // token, then runs the atomic publish/unpublish + projection-rebuild
+  // transaction in services/firebase/moodoorProjection.ts.
+  app.patch('/api/v1/moodoor/studio/listings/:id/publication', async (req: any, res: any) => {
+    try {
+      const authHeader = req.headers.authorization || '';
+      const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : null;
+      if (!idToken) return res.status(401).json({ error: 'Missing bearer token.' });
+
+      const decoded = await admin.auth().verifyIdToken(idToken);
+
+      const { action } = req.body ?? {};
+      if (action !== 'publish' && action !== 'unpublish') {
+        return res.status(400).json({ error: "action must be 'publish' or 'unpublish'." });
+      }
+
+      const result = await setMoodoorPublicationServer(db, req.params.id, action, { uid: decoded.uid });
+      res.json(result);
+    } catch (error) {
+      console.error('Moodoor publication error:', error);
+      const message = error instanceof Error ? error.message : 'Failed to update Moodoor publication.';
+      const status = message.includes('do not own')
+        ? 403
+        : message.includes('not found') || message.includes('not eligible')
+          ? 400
+          : 500;
+      res.status(status).json({ error: message });
     }
   });
 

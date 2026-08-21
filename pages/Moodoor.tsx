@@ -5,18 +5,16 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   doorChoices,
   getCreatorMoodoorListings,
-  getMoodoorCatalog,
   moodChoices,
-  rankMoodoorMatches,
   seasonChoices,
   setMoodoorPublication,
   type DoorId,
   type MoodId,
   type MoodoorListing,
-  type MoodoorMatch,
   type MoodProfile,
   type SeasonId,
 } from '../services/moodoorMatching';
+import { fetchMoodoorMatches, type PublicMoodoorMatch } from '../services/moodoorMatchesApi';
 
 type FinderStep = 1 | 2 | 3 | 4;
 
@@ -70,7 +68,7 @@ function FinderChoice<T extends string>({
   );
 }
 
-function ListingImage({ listing }: { listing: MoodoorListing }) {
+function ListingImage({ listing }: { listing: { title: string; imageUrl: string | null } }) {
   if (listing.imageUrl) {
     return <img src={listing.imageUrl} alt={listing.title} className="h-full w-full object-cover" />;
   }
@@ -82,7 +80,7 @@ function ListingImage({ listing }: { listing: MoodoorListing }) {
   );
 }
 
-function MatchCard({ match, primary }: { match: MoodoorMatch; primary: boolean }) {
+function MatchCard({ match, primary }: { match: PublicMoodoorMatch; primary: boolean }) {
   const { listing } = match;
   return (
     <article className={`overflow-hidden border ${primary ? 'border-[#C9A84C] bg-[#F7F2E8]' : 'border-[#1A1714]/10 bg-white'}`}>
@@ -113,8 +111,8 @@ function MatchCard({ match, primary }: { match: MoodoorMatch; primary: boolean }
 export function MoodoorFinder() {
   const [step, setStep] = useState<FinderStep>(1);
   const [profile, setProfile] = useState<Partial<MoodProfile>>({});
-  const [catalog, setCatalog] = useState<MoodoorListing[]>([]);
-  const [matches, setMatches] = useState<MoodoorMatch[]>([]);
+  const [catalogSize, setCatalogSize] = useState(0);
+  const [matches, setMatches] = useState<PublicMoodoorMatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -130,9 +128,12 @@ export function MoodoorFinder() {
     setLoading(true);
     setError(null);
     try {
-      const nextCatalog = await getMoodoorCatalog();
-      setCatalog(nextCatalog);
-      setMatches(rankMoodoorMatches(profile as MoodProfile, nextCatalog));
+      // Calls the server-side matcher (POST /api/v1/moodoor/matches) instead
+      // of reading marketplace_listings from the browser — see
+      // services/moodoorMatchesApi.ts and services/firebase/moodoorProjection.ts.
+      const result = await fetchMoodoorMatches(profile as MoodProfile);
+      setCatalogSize(result.catalogSize);
+      setMatches(result.matches);
       setStep(4);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Moodoor could not read the current wreath edit. Please try again.');
@@ -152,7 +153,7 @@ export function MoodoorFinder() {
 
   function restart() {
     setProfile({});
-    setCatalog([]);
+    setCatalogSize(0);
     setMatches([]);
     setError(null);
     setStep(1);
@@ -206,7 +207,7 @@ export function MoodoorFinder() {
               <div className="mt-12 border border-white/10 bg-white/[0.03] p-10 text-center sm:p-16">
                 <Leaf className="mx-auto text-[#C9A84C]" size={34} strokeWidth={1.2} />
                 <p className="mt-6 font-serif text-4xl font-light">Nothing in the current edit<br /><em className="text-[#D4A96A]">belongs closely enough.</em></p>
-                <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-white/55">There are {catalog.length} approved, available wreaths in the live catalogue right now. Moodoor will not suggest a design simply to fill the space.</p>
+                <p className="mx-auto mt-5 max-w-xl text-sm leading-7 text-white/55">There are {catalogSize} approved, available wreaths in the live catalogue right now. Moodoor will not suggest a design simply to fill the space.</p>
               </div>
             )}
             <div className="mt-12 flex flex-wrap justify-center gap-5">
