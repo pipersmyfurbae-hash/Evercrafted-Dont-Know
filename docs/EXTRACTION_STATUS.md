@@ -288,3 +288,131 @@ Controls") of the migration plan doc.
 - **Rate limiting is per-process** — fine for a single instance, not for a horizontally scaled
   deployment. No other route (e.g. `/blueprint/create`, which calls the Gemini API) has any rate
   limiting yet either; this pass only added it to the newly-added public Moodoor route.
+
+---
+
+# Phase 4 — Firebase → Supabase migration
+
+Replaces Firebase (Auth + Firestore + Storage-for-motion) with Supabase across the whole app.
+Trigger: uncertainty over whether the Firebase project/account was even still active, plus this
+session having direct Supabase MCP access (able to inspect and migrate a real database) but no
+equivalent Firebase access.
+
+## What was found first (before touching anything)
+
+- The "Evercrafted" Supabase project had a broken read-only DB role (password auth failing even
+  after a manual reset) — not something fixable from this session.
+- A second project, **"Final EcoSystem"** (`kxkvsrwpezusqvriftqv`, us-west-1), was already active
+  and already had a real, populated schema for this exact app: `profiles`, `moodoor_collections`,
+  `moodoor_packages`, `moodoor_lookbooks`, `blueprint_marketplace_listings`, `marketplace_apps`,
+  etc. Confirmed with the user this is the real backend to build against.
+- `moodoor_packages`/`moodoor_lookbooks` had **wide-open RLS** (`SELECT`/`INSERT`/`UPDATE`/`DELETE`
+  all `qual: true` — anyone with the anon key could read/write/delete). Per the user's explicit
+  instruction, **none of the existing tables were touched or copied** — this migration adds a
+  separate, purpose-built set of tables instead, so that exposure is untouched/unaddressed by this
+  work (flagged, not fixed, since it's out of scope for tables we don't own).
+- The user asked to keep the existing mood/season/door matcher design (not the richer
+  emotion-vector/territory model `moodoor_packages` actually uses) — so `services/moodoor/core.ts`
+  and its scoring logic are unchanged; only the data-access layer moved to Postgres.
+
+## New tables (via `supabase/migrations/0001_moodoor_and_app_tables.sql`, applied for real via MCP
+— not just written to disk)
+
+- `moodoor_listings` — canonical listing, Postgres equivalent of the old Firestore
+  `marketplace_listings`. RLS: owner or admin can read/update; only owner can insert; only admin
+  can delete.
+- `moodoor_public_listings` — the public projection. RLS: public read; **no** insert/update/delete
+  policy for any client role at all — only the service-role client or the
+  `set_moodoor_publication()` function (`SECURITY DEFINER`, bypasses RLS) can write it.
+- `moodoor_publication_events` — audit trail. No client policies at all.
+- `set_moodoor_publication(listing_id, action)` — a Postgres function replacing
+  `setMoodoorPublicationServer()`'s hand-rolled Firestore transaction: ownership check, role check
+  (see note below), eligibility check on publish, projection upsert/delete, and audit insert, all
+  in one atomic function body.
+- `projects`, `inventory`, `saved_trends` — Postgres equivalents of the ad-hoc Firestore
+  collections `MemoryWeaver`/`InventoryWeaver`/`ImageAnalyzer`/`Sourcing` wrote to. All RLS-scoped
+  to owner-or-admin.
+- A `generated-media` public Storage bucket was also created, replacing Firebase Storage for the
+  motion-generation video pipeline in `server.ts`.
+
+**Note on the role/tier check inside `set_moodoor_publication()`:** this schema has no per-creator
+"Studio tier" entitlement — no tier column on `profiles`, and no `moodoor-studio` row in
+`marketplace_apps`/`marketplace_app_subscriptions` (only `story-drop`, `inventory-weaver`,
+`placement-intelligence` exist there). Publishing is gated on `current_role_is('admin')` (an
+existing helper function in this DB) — i.e. only an owner/admin can release a listing today. This
+is narrower than the original Firebase intent (any Studio-tier maker), documented rather than
+papered over with a fabricated entitlement.
+
+## Code changes
+
+- `lib/supabase.ts` (browser client, anon key) + `services/supabaseAdmin.ts` (server-only,
+  service-role key) replace `lib/firebase.ts`.
+- `contexts/AuthContext.tsx` — Supabase Auth (`onAuthStateChange`, `signInWithOAuth('google')`)
+  instead of Firebase Auth. No longer needs to manually create a user profile on first sign-in —
+  the pre-existing `on_auth_user_created` trigger (`handle_new_user()`) already does that.
+- `services/tierService.ts` — added `roleToTier()`, bridging `profiles.role`
+  (`owner`/`admin`/`client`) to the existing `Tier` type so `Layout`/`TierGuard`'s
+  `checkFeatureAccess()` calls keep working without a real tier column.
+- `components/Layout.tsx` / `components/TierGuard.tsx` — swapped the hardcoded admin-bypass email
+  check for a real `userData.role === 'admin' || 'owner'` check (the account in question already
+  has `role: 'owner'` in the real `profiles` table).
+- `services/moodoorMatching.ts` — reads/writes `moodoor_listings` via `supabase-js` instead of
+  Firestore; `rowToMarketplaceDocument()` maps the clean Postgres row onto the same
+  `MarketplaceDocument` shape `services/moodoor/core.ts`'s (unmodified, already-tested) adapter
+  functions expect, so none of that logic needed rewriting.
+- `services/supabaseMoodoorProjection.ts` replaces `services/firebase/moodoorProjection.ts`:
+  `getPublicMoodoorCatalog()` reads the projection table; `setMoodoorPublicationServer()` calls
+  the `set_moodoor_publication` RPC **as the calling user** (a per-request client built from their
+  bearer token — not the service-role client), so the function's internal `auth.uid()` checks
+  apply to them, not to a privileged identity.
+- `services/firebase/marketplaceService.ts` was dead code (never imported anywhere) — deleted
+  rather than ported.
+- `server.ts` — Firebase Admin init replaced with `createSupabaseAdminClient()`; the motion-video
+  route now reads/updates the `projects` table and uploads to the `generated-media` Storage bucket
+  instead of Firestore + Firebase Storage; the publication route verifies the caller's Supabase
+  access token via `db.auth.getUser()` and builds a per-caller client for the RPC call.
+- `services/projectService.ts` — inserts into Supabase `projects` instead of Firestore.
+- `pages/Sourcing.tsx`, `ImageAnalyzer.tsx`, `InventoryWeaver.tsx`, `MemoryWeaver.tsx` — their
+  Firestore reads/writes (`inventory`, `savedTrends`) moved to the new Supabase tables;
+  `InventoryWeaver`'s live Firestore `onSnapshot` listener became a Supabase Realtime
+  `postgres_changes` channel subscription. `ImageAnalyzer`'s dead-code-adjacent
+  `handleFirestoreError()`/`FirestoreErrorInfo` (which read Firebase-only fields like
+  `emailVerified`/`tenantId`/`providerData`) was simplified to a backend-agnostic
+  `handleDbError()`; the exact same unused helper in `MemoryWeaver.tsx` was dead code (never
+  called) and was deleted outright.
+- Every `user.uid` reference across these files became `user.id` (Supabase's `User` type has no
+  `uid` field).
+- `firestore.rules` and `firebase.json` deleted (no longer applicable). `.env.example` now
+  documents `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` (safe to share — not secret) and
+  `SUPABASE_SERVICE_ROLE_KEY` (secret, server-only, left blank).
+- `package.json` — added `@supabase/supabase-js`, removed `firebase` (client SDK). Kept
+  `firebase-admin` out of the dependency list too since nothing uses it anymore after the motion
+  route's storage migration.
+
+## Verified
+
+- `npx tsc --noEmit` — clean.
+- `npm run test:moodoor-matching` — all 34 tests pass, running against the **real** Supabase
+  project's anon key (not a mock).
+- `npm run test:moodoor-projection`, `npm run test:rate-limiter` — pass unchanged.
+- `npx vite build` — succeeds; bundle size actually dropped (~1.51 MB → ~1.04 MB, ~389 kB → ~275 kB
+  gzip) now that the Firebase client SDK is gone.
+- Migration applied for real via the Supabase MCP tools (`apply_migration`), not just written to
+  a file — confirmed via `list_tables` that all 6 new tables exist with RLS enabled, alongside the
+  pre-existing tables, untouched.
+
+## Still open after Phase 4
+
+- The exposed RLS on `moodoor_packages`/`moodoor_lookbooks` (pre-existing, not part of this
+  migration's tables) is still open — flagged to the user, intentionally not touched.
+- The role-only (no tier) gate on `set_moodoor_publication()` is narrower than the original
+  Firebase-era design's intent; revisit once/if a real per-creator entitlement model exists.
+- `SUPABASE_SERVICE_ROLE_KEY` must be supplied by the project owner in the real deployment
+  environment — never committed, and this session never had or needed it (the RPC-as-caller
+  pattern for publication avoids requiring the service-role key for that route entirely; only the
+  public matches route and the motion-generation route use the admin client).
+- No automated tests were added for the new Supabase-backed `AuthContext`, `projectService`,
+  `inventory`/`saved_trends` flows, or the `set_moodoor_publication` Postgres function itself
+  (beyond the pre-existing moodoor-matching/projection-boundary/rate-limiter suites, which all
+  still pass) — worth adding, especially a test exercising the RPC function directly against a
+  disposable listing.

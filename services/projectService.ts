@@ -1,5 +1,4 @@
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import type { Blueprint, EngineBlueprint } from '../types';
 
 export interface CreateProjectInput {
@@ -17,15 +16,19 @@ export interface CreateProjectInput {
  * Image Analyzer) after a blueprint has been produced.
  */
 export async function createProject(input: CreateProjectInput): Promise<string> {
-  const docRef = await addDoc(collection(db, 'projects'), {
-    userId: input.userId,
-    name: input.name,
-    source: input.source,
-    blueprint: input.blueprint,
-    render: input.render ?? null,
-    status: input.status,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return docRef.id;
+  const { data, error } = await supabase
+    .from('projects')
+    .insert({
+      user_id: input.userId,
+      name: input.name,
+      source: input.source,
+      blueprint: input.blueprint,
+      render: input.render ?? null,
+      status: input.status,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return data.id;
 }

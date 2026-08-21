@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { db } from '../lib/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { PackageSearch, Loader2, Sparkles, CheckCircle2 } from 'lucide-react';
@@ -20,14 +19,25 @@ export default function InventoryWeaver() {
   useEffect(() => {
     if (!user) return;
 
-    const q = query(collection(db, 'inventory'), where('userId', '==', user.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setInventory(items);
+    async function loadInventory() {
+      const { data, error } = await supabase.from('inventory').select('*').eq('user_id', user!.id);
+      if (!error) setInventory(data ?? []);
       setLoading(false);
-    });
+    }
+    void loadInventory();
 
-    return () => unsubscribe();
+    const channel = supabase
+      .channel(`inventory-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory', filter: `user_id=eq.${user.id}` },
+        () => void loadInventory()
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const generateFromInventory = async () => {
@@ -42,7 +52,7 @@ export default function InventoryWeaver() {
 
     try {
       const inventoryContext = inventory.map(item => 
-        `${item.name} (${item.category}, ${item.role}, Qty: ${item.qtyOnHand})`
+        `${item.name} (${item.category}, ${item.role}, Qty: ${item.stock})`
       ).join(', ');
 
       const response = await fetch('/blueprint/from-inventory', {
@@ -61,7 +71,7 @@ export default function InventoryWeaver() {
       // Save to Projects
       try {
         await createProject({
-          userId: user.uid,
+          userId: user.id,
           name: parsed.name || 'Inventory Design',
           source: 'Inventory Weaver',
           blueprint: parsed.blueprint,
@@ -116,7 +126,7 @@ export default function InventoryWeaver() {
                           <p className="text-[8px] text-primary/40 uppercase tracking-tighter">{item.category} • {item.role}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-[10px] font-mono text-sage-d">x{item.qtyOnHand}</p>
+                          <p className="text-[10px] font-mono text-sage-d">x{item.stock}</p>
                         </div>
                       </div>
                     ))}

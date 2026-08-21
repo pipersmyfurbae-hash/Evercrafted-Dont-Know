@@ -10,8 +10,7 @@ import { Label } from '../components/ui/label';
 import { Image as ImageSearch, Upload, Loader2, CheckCircle2, Save, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import { db, auth } from '../lib/firebase';
-import { collection, doc, setDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { createProject } from '../services/projectService';
 
 
@@ -24,40 +23,21 @@ enum OperationType {
   WRITE = 'write',
 }
 
-interface FirestoreErrorInfo {
+interface DbErrorInfo {
   error: string;
   operationType: OperationType;
   path: string | null;
-  authInfo: {
-    userId?: string;
-    email?: string | null;
-    emailVerified?: boolean;
-    isAnonymous?: boolean;
-    tenantId?: string | null;
-    providerInfo?: any[];
-  }
+  userId?: string;
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
+function handleDbError(error: unknown, operationType: OperationType, path: string | null, userId?: string) {
+  const errInfo: DbErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
     operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+    path,
+    userId,
+  };
+  console.error('Database error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
 
@@ -153,7 +133,7 @@ export default function ImageAnalyzer() {
       // Auto-save as project
       try {
         await createProject({
-          userId: user.uid,
+          userId: user.id,
           name: `Wreath Analysis ${new Date().toLocaleDateString()}`,
           source: 'Image Analyzer',
           blueprint: result,
@@ -213,27 +193,27 @@ export default function ImageAnalyzer() {
       const VALID_ROLES = ['focal', 'secondary', 'accent', 'filler', 'greenery', 'base', 'ribbon'];
       const normalizedRole = VALID_ROLES.find(r => analysis.role.toLowerCase().includes(r)) || 'focal';
 
-      const newDocRef = doc(collection(db, 'inventory'));
-      await setDoc(newDocRef, {
-        id: newDocRef.id,
+      const { error: insertError } = await supabase.from('inventory').insert({
         name: analysis.name.substring(0, 99),
         category: analysis.category,
-        colorFamily: analysis.colorFamily,
+        color: analysis.colorFamily,
         role: normalizedRole,
-        qtyOnHand: 1,
-        bloomDiameter: Number(analysis.bloomDiameter) || 0,
-        stemLength: Number(analysis.stemLength) || 0,
-        costPerUnit: 0,
-        supplierSku: '',
-        description: analysis.description,
-        svg: analysis.svg,
-        imageUrl: resizedImage, 
-        userId: user.uid,
-        createdAt: new Date().toISOString()
+        stock: 1,
+        user_id: user.id,
+        data: {
+          bloomDiameter: Number(analysis.bloomDiameter) || 0,
+          stemLength: Number(analysis.stemLength) || 0,
+          costPerUnit: 0,
+          supplierSku: '',
+          description: analysis.description,
+          svg: analysis.svg,
+          imageUrl: resizedImage,
+        },
       });
+      if (insertError) throw insertError;
       setSaved(true);
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'inventory');
+      handleDbError(error, OperationType.CREATE, 'inventory', user.id);
     } finally {
       setSaving(false);
     }

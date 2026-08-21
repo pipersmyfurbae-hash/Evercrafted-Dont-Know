@@ -6,20 +6,16 @@ import multer from 'multer';
 import { analyzeWreathImage } from './src/services/vision-flower-engine.ts';
 import { generateMotion } from './src/services/motionEngine.ts';
 import { GoogleGenAI, Type } from '@google/genai';
-import admin from 'firebase-admin';
-import { getStorage } from 'firebase-admin/storage';
-import { getFirestore } from 'firebase-admin/firestore';
+import { createClient } from '@supabase/supabase-js';
+import fs from 'fs';
 import { isDoorId, isMoodId, isSeasonId, rankMoodoorMatches, toPublicMatch } from './services/moodoor/core.ts';
-import { getPublicMoodoorCatalog, setMoodoorPublicationServer } from './services/firebase/moodoorProjection.ts';
+import { getPublicMoodoorCatalog, setMoodoorPublicationServer } from './services/supabaseMoodoorProjection.ts';
+import { createSupabaseAdminClient } from './services/supabaseAdmin.ts';
 import { createRateLimiter } from './services/rateLimiter.ts';
 
-// Initialize Firebase Admin
-admin.initializeApp({
-  credential: admin.credential.applicationDefault(),
-  storageBucket: 'wreath-weaver.firebasestorage.app'
-});
-const db = getFirestore();
-const storage = getStorage();
+const supabaseUrl = process.env.VITE_SUPABASE_URL!;
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY!;
+const db = createSupabaseAdminClient();
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const upload = multer({ storage: multer.memoryStorage() });
@@ -153,12 +149,14 @@ async function startServer() {
       // Non-blocking process
       (async () => {
         try {
-          const projectRef = db.collection('projects').doc(projectId);
-          const projectDoc = await projectRef.get();
-          if (!projectDoc.exists) throw new Error('Project not found');
-          
-          const projectData = projectDoc.data();
-          const renderUrl = projectData?.render;
+          const { data: project, error: projectError } = await db
+            .from('projects')
+            .select('render')
+            .eq('id', projectId)
+            .single();
+          if (projectError || !project) throw new Error('Project not found');
+
+          const renderUrl = project.render;
           if (!renderUrl) throw new Error('No render image found in project');
 
           // Generate motion
@@ -170,25 +168,28 @@ async function startServer() {
             30
           );
 
-          // Upload to Storage
-          const bucket = storage.bucket();
+          // Upload to Supabase Storage
           const fileName = `motions/${projectId}-${Date.now()}.mp4`;
-          await bucket.upload(videoPath, { destination: fileName });
-          const [url] = await bucket.file(fileName).getSignedUrl({
-            action: 'read',
-            expires: '03-01-2500'
-          });
+          const videoBuffer = await fs.promises.readFile(videoPath);
+          const { error: uploadError } = await db.storage
+            .from('generated-media')
+            .upload(fileName, videoBuffer, { contentType: 'video/mp4' });
+          if (uploadError) throw uploadError;
+          const { data: publicUrl } = db.storage.from('generated-media').getPublicUrl(fileName);
 
           // Update project
-          await projectRef.update({
-            motion: {
-              type: motion_type,
-              intensity: motion_intensity,
-              duration: 10,
-              fps: 30,
-              videoUrl: url
-            }
-          });
+          await db
+            .from('projects')
+            .update({
+              motion: {
+                type: motion_type,
+                intensity: motion_intensity,
+                duration: 10,
+                fps: 30,
+                videoUrl: publicUrl.publicUrl,
+              },
+            })
+            .eq('id', projectId);
         } catch (error) {
           console.error('Motion generation pipeline error:', error);
         }
@@ -224,23 +225,31 @@ async function startServer() {
     }
   });
 
-  // Maker Studio publication toggle — verifies the caller's Firebase ID
-  // token, then runs the atomic publish/unpublish + projection-rebuild
-  // transaction in services/firebase/moodoorProjection.ts.
+  // Maker Studio publication toggle — verifies the caller's Supabase access
+  // token, then calls the set_moodoor_publication() Postgres function
+  // (services/supabaseMoodoorProjection.ts) as that caller, so its internal
+  // ownership/role checks apply to them rather than to a privileged service
+  // identity.
   app.patch('/api/v1/moodoor/studio/listings/:id/publication', async (req: any, res: any) => {
     try {
       const authHeader = req.headers.authorization || '';
-      const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : null;
-      if (!idToken) return res.status(401).json({ error: 'Missing bearer token.' });
+      const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : null;
+      if (!accessToken) return res.status(401).json({ error: 'Missing bearer token.' });
 
-      const decoded = await admin.auth().verifyIdToken(idToken);
+      const { data: userResult, error: userError } = await db.auth.getUser(accessToken);
+      if (userError || !userResult.user) return res.status(401).json({ error: 'Invalid or expired session.' });
 
       const { action } = req.body ?? {};
       if (action !== 'publish' && action !== 'unpublish') {
         return res.status(400).json({ error: "action must be 'publish' or 'unpublish'." });
       }
 
-      const result = await setMoodoorPublicationServer(db, req.params.id, action, { uid: decoded.uid });
+      const supabaseAsCaller = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: `Bearer ${accessToken}` } },
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+
+      const result = await setMoodoorPublicationServer(supabaseAsCaller, req.params.id, action);
       res.json(result);
     } catch (error) {
       console.error('Moodoor publication error:', error);

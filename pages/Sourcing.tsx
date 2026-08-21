@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { requireGeminiClient } from '../services/geminiClient';
-import { db } from '../lib/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -22,11 +21,12 @@ export default function Sourcing() {
 
     try {
       if (searchType === 'local') {
-        const q = query(collection(db, 'inventory'));
-        const querySnapshot = await getDocs(q);
-        const items = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const filtered = items.filter((item: any) => item.name.toLowerCase().includes(queryText.toLowerCase()));
-        setResults(filtered);
+        const { data, error } = await supabase
+          .from('inventory')
+          .select('*')
+          .ilike('name', `%${queryText}%`);
+        if (error) throw error;
+        setResults(data);
       } else {
         const tools = searchType === 'maps' ? [{ googleMaps: {} }] : [{ googleSearch: {} }];
         

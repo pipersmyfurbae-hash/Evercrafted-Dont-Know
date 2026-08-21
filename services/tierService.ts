@@ -74,3 +74,18 @@ export function checkFeatureAccess(tier: Tier, feature: keyof TierLimits): boole
 export function checkUsageLimit(currentUsage: number, tier: Tier): boolean {
   return currentUsage < TIER_CONFIG[tier].designsPerMonth;
 }
+
+/**
+ * profiles.role in the Supabase schema (owner/admin/client) has no
+ * corresponding notion of a purchased tier — there's no per-creator
+ * subscription entitlement for design tools today (see
+ * marketplace_apps/marketplace_app_subscriptions, which only cover a few
+ * unrelated named add-ons). Bridges role to the closest Tier so existing
+ * checkFeatureAccess() call sites (Layout, TierGuard) keep working without
+ * a real tier column to read. Replace this once a real per-creator
+ * entitlement exists.
+ */
+export function roleToTier(role: 'owner' | 'admin' | 'client' | undefined): Tier {
+  if (role === 'owner' || role === 'admin') return 'studio';
+  return 'free';
+}

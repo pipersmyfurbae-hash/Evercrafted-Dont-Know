@@ -30,8 +30,8 @@ export const TierGuard: React.FC<TierGuardProps> = ({
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Admin bypass
-  if (userData?.role === 'admin' || user.email === 'thebadencompany@gmail.com') {
+  // Owner/admin bypass
+  if (userData?.role === 'admin' || userData?.role === 'owner') {
     return <>{children}</>;
   }
 

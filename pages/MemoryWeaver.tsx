@@ -4,59 +4,10 @@ import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { BrainCircuit, Loader2, Image as ImageIcon, ListOrdered, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { db, auth } from '../lib/firebase';
-import { collection, addDoc, doc, setDoc, query, where, getDocs } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { QualityGate } from '../components/QualityGate';
 import { runOrchestrator } from '../services/BlueprintOrchestrator';
 import { translateEmotion } from '../services/emotionTranslator';
-
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId?: string;
-    email?: string | null;
-    emailVerified?: boolean;
-    isAnonymous?: boolean;
-    tenantId?: string | null;
-    providerInfo?: any[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
 import { createProject } from '../services/projectService';
 
 export default function MemoryWeaver() {
@@ -77,9 +28,8 @@ export default function MemoryWeaver() {
       const emotionProfile = await translateEmotion(memory);
 
       // Fetch saved trends
-      const trendsQuery = query(collection(db, 'savedTrends'), where('userId', '==', user.uid));
-      const trendsSnapshot = await getDocs(trendsQuery);
-      const savedTrends = trendsSnapshot.docs.map(doc => doc.data().trendDescription);
+      const { data: trendRows } = await supabase.from('saved_trends').select('data').eq('user_id', user.id);
+      const savedTrends = (trendRows ?? []).map((row) => row.data?.trendDescription).filter(Boolean);
       const trendsContext = savedTrends.length > 0 ? `Consider these saved trends: ${savedTrends.join(', ')}.` : '';
 
       const response = await fetch('/blueprint/from-emotion', {
@@ -102,7 +52,7 @@ export default function MemoryWeaver() {
       // Save to Projects
       try {
         await createProject({
-          userId: user.uid,
+          userId: user.id,
           name: (parsedResult.name || 'Untitled Design').substring(0, 199),
           source: 'Memory Weaver',
           blueprint: parsedResult.blueprint,

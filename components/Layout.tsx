@@ -39,7 +39,7 @@ export default function Layout() {
   ];
 
   const navItems = allNavItems.filter(item => {
-    if (userData?.role === 'admin' || user?.email === 'thebadencompany@gmail.com') return true;
+    if (userData?.role === 'admin' || userData?.role === 'owner') return true;
     
     // If the item has a feature requirement, check it against the user's tier
     if (item.feature) {
@@ -103,16 +103,16 @@ export default function Layout() {
 
           <div className="pt-8 border-t border-ink/5 space-y-8">
             <div className="flex items-center gap-4">
-              {user?.photoURL ? (
-                <img src={user.photoURL} alt="Avatar" className="w-10 h-10 grayscale rounded-none" />
+              {user?.user_metadata?.avatar_url ? (
+                <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-10 h-10 grayscale rounded-none" />
               ) : (
                 <div className="w-10 h-10 bg-sage-ll text-sage-d flex items-center justify-center text-[10px] font-bold">
-                  {user?.displayName?.charAt(0) || 'U'}
+                  {userData?.displayName?.charAt(0) || 'U'}
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-widest truncate text-ink">{user?.displayName}</p>
-                <p className="text-[9px] text-muted-studio/60 truncate uppercase tracking-tighter">{user?.email}</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest truncate text-ink">{userData?.displayName}</p>
+                <p className="text-[9px] text-muted-studio/60 truncate uppercase tracking-tighter">{userData?.email}</p>
               </div>
             </div>
             <button 

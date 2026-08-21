@@ -130,7 +130,7 @@ export function MoodoorFinder() {
     try {
       // Calls the server-side matcher (POST /api/v1/moodoor/matches) instead
       // of reading marketplace_listings from the browser — see
-      // services/moodoorMatchesApi.ts and services/firebase/moodoorProjection.ts.
+      // services/moodoorMatchesApi.ts and services/supabaseMoodoorProjection.ts.
       const result = await fetchMoodoorMatches(profile as MoodProfile);
       setCatalogSize(result.catalogSize);
       setMatches(result.matches);
@@ -233,7 +233,7 @@ export function MoodoorStudio() {
     setLoading(true);
     setError(null);
     try {
-      setListings(await getCreatorMoodoorListings(user.uid));
+      setListings(await getCreatorMoodoorListings(user.id));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Moodoor Studio could not load your publishable marketplace designs.');
     } finally {

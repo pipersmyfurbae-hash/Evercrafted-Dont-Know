@@ -1,7 +1,7 @@
 /**
  * Isomorphic Moodoor matching core — no Firestore import, so the exact same
  * eligibility/scoring logic can run client-side (legacy, via
- * services/moodoorMatching.ts) and server-side (services/firebase/moodoorProjection.ts,
+ * services/moodoorMatching.ts) and server-side (services/supabaseMoodoorProjection.ts,
  * the POST /api/v1/moodoor/matches route in server.ts). Splitting this out is
  * Part IV / Phase 4 ("shadow matching") of the migration plan in
  * "Moodoor Matching Code Walkthrough and Platform Migration Plan.md": both
