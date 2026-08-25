@@ -8,11 +8,13 @@ import { createClient } from '@supabase/supabase-js';
  * that ship to the browser) — the service-role key must never reach it.
  */
 export function createSupabaseAdminClient() {
-  const url = process.env.VITE_SUPABASE_URL;
+  // The URL isn't secret (see lib/supabase.ts); the service-role key is,
+  // and has no safe default — it must be set in the deploy environment.
+  const url = process.env.VITE_SUPABASE_URL || 'https://kxkvsrwpezusqvriftqv.supabase.co';
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!url || !serviceRoleKey) {
-    throw new Error('VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set — see .env.example.');
+  if (!serviceRoleKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY must be set — see .env.example.');
   }
 
   return createClient(url, serviceRoleKey, {
